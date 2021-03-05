@@ -5,14 +5,16 @@ import sys
 import argparse
 import urllib3
 import json 
-import _thread 
+from threading import Thread
 import time
 from itertools import islice
+import os
 
-
+RING_SIZE_EXP = 10   # for a given value -> 2**SIZE nodes at ring (max)
 BOOTSTRAP_IP = 'localhost'
 BOOTSTRAP_PORT = '5000'
 PREFIX = '/home/'
+
 
 def check_join(ip, port):
 	BASE_URL = f'http://{BOOTSTRAP_IP}:{BOOTSTRAP_PORT}{PREFIX}join/'
@@ -20,20 +22,24 @@ def check_join(ip, port):
 	res = requests.post(BASE_URL, params = bogus ,headers = {'content_type' : 'application/json'}).json()
 	return res
 
+global flag
 def join_util(ip, port):
 	print('in THREAD')
 	time.sleep(5)
 	check_join(ip, port)
+	flag = False
+	exit(0)
+
 
 def hash_fn(nd):
 	if nd is None:
 		return None
 	elif isinstance(nd, dict):
 		inp = f'{nd["ip"]}:{nd["port"]}'.encode('utf-8')
-		return int(sha1(inp).hexdigest() , 16) % 2**160
+		return int(sha1(inp).hexdigest() , 16) % 2**RING_SIZE_EXP
 	else:
 		inp = nd.encode('utf-8')
-		return int(sha1(inp).hexdigest(), 16) % 2**160
+		return int(sha1(inp).hexdigest(), 16) % 2**RING_SIZE_EXP
 
 class Node:
 	def __init__(self, ip, port):
@@ -60,14 +66,11 @@ app = Flask(__name__)
 
 global node
 
-
 '''
 
 / ENDPOINT redirects redirects to /home/ 
 
 '''
-
-
 
 @app.route('/')
 def home():
@@ -75,23 +78,9 @@ def home():
 	return redirect(PREFIX)
 
 
-
-
-
-
-
 '''
 GET BASIC info from current node 
 '''
-
-
-
-
-
-
-
-
-
 
 @app.route( PREFIX  , methods = ['GET'])
 def home_greet():
@@ -101,21 +90,9 @@ def home_greet():
 		'nodehash' : node.nodehash() , 'prev' : node.format_prev(), 'next' : node.format_next(), \
 		'resps': node.responsibility})
 
-
-
-
-
-
-
-
 '''
 ADD new nodes to DHT
 '''
-
-
-
-
-
 
 @app.route(PREFIX + 'join/', methods = ['POST', 'GET'])
 def join_node():
@@ -168,6 +145,19 @@ def join_node():
 		'''		
 		print('In update previous command')
 		node.previous_node = {'ip' : ip , 'port' : port}
+		new_dict= dict()
+		for k in node.responsibility.keys():
+			if k <= hash_fn(node.previous_node) or \
+			(k > node.nodehash() and k > hash_fn(node.previous_node)):
+				new_dict[k] = node.responsibility[k]
+		for i in new_dict.keys():
+			print (f'{i} -> {new_dict[i]}')
+			del node.responsibility[i]
+		params = {'dict' : json.dumps(new_dict)}
+		headers = {'content_type' : 'application/json'}
+		url = f'http://{node.previous_node["ip"]}:{node.previous_node["port"]}{PREFIX}insert/'
+		res = requests.post(url , params=params, headers=headers)
+
 		return jsonify({'status' : 200})
 
 	elif cmd == 'update-next':
@@ -196,6 +186,7 @@ def join_node():
 		the following if-else statement determines if a node should be placed
 		between the current node and its next, or be forwarded to next node to process
 		'''
+
 		params = {'status' : 200, 'command' : 'update-previous', 'ip' : ip, 'port' : port}
 		headers = {'content_type'  :  'application/json'}
 		url = f'http://{node.next_node["ip"]}:{node.next_node["port"]}{PREFIX}join/'
@@ -213,7 +204,6 @@ def join_node():
 		node.next_node = {'ip' : ip, 'port' : port}
 		return jsonify({'status':200, 'resp': 'in a cmd with 2 steps'})
 
-
 	else:
 
 		print('forward to next node')
@@ -225,19 +215,9 @@ def join_node():
 
 
 
-
-
-
-
-
 '''
 INSERT METHOD ADDS NEW DATA TO DHT
 '''
-
-
-
-
-
 
 @app.route(PREFIX + 'insert/', methods = ['GET', 'POST'])
 def insert_file():
@@ -245,24 +225,26 @@ def insert_file():
 		if 'key' in request.args and 'value' in request.args:
 			key = request.args['key']
 			value = request.args['value']
+			
+			key_hash = hash_fn(key)
+
+			if ((key_hash <= node.nodehash() and key_hash > hash_fn(node.previous_node) and node.nodehash() > hash_fn(node.previous_node)) or\
+				(node.nodehash() < hash_fn(node.previous_node) and (key_hash > hash_fn(node.previous_node) or key_hash < node.nodehash()))):
+				node.add_responsibility(key_hash, value)
+				return jsonify({'status' : 200, 'resp' : 'added <key,value> pair'})
+			else:
+				headers = {'content_type' : 'application/json'}
+				params = {'key' : key, 'value' : value}
+				url = f'http://{node.next_node["ip"]}:{node.next_node["port"]}{PREFIX}insert/'
+				res = requests.post(url, headers=headers, params=params)
+				return jsonify({'status' : 200, 'resp' : 'forwarded <key,value> pair'})
+		elif 'dict' in request.args:
+			dict_ = json.loads(request.args['dict'])
+			print(dict_)
+			node.responsibility.update(dict_)
+			return jsonify({'status' : 200, 'resp' : 'dictionary insertion OK'})
 		else:
-			return jsonify({'status': 300, 'resp' : 'invalid arguments passed'})
-	else:
-		return jsonify({'status' : 350, 'resp' : 'invalid data format'})
-	key_hash = hash_fn(key)
-	if ((key_hash <= node.nodehash() and key_hash > hash_fn(node.previous_node) and node.nodehash() > hash_fn(node.previous_node)) or\
-		(node.nodehash() < hash_fn(node.previous_node) and (key_hash > hash_fn(node.previous_node) or key_hash < node.nodehash()))):
-		node.add_responsibility(key_hash, value)
-		return jsonify({'status' : 200, 'resp' : 'added <key,value> pair'})
-	else:
-		headers = {'content_type' : 'application/json'}
-		params = {'key' : key, 'value' : value}
-		url = f'http://{node.next_node["ip"]}:{node.next_node["port"]}{PREFIX}insert/'
-		res = requests.post(url, headers=headers, params=params)
-		return jsonify({'status' : 200, 'resp' : 'forwarded <key,value> pair'})
-
-
-
+			return jsonify({'status' : 400, 'resp' : 'bad request (check content_type header)'})
 
 
 '''
@@ -270,10 +252,6 @@ def insert_file():
 QUERY endpoint searches keys in dht
 
 '''
-
-
-
-
 
 @app.route(PREFIX + 'query/', methods = ['GET', 'POST'])
 def query_fn():
@@ -315,10 +293,31 @@ def query_fn():
 		res = requests.post(url, params=params, headers= headers)
 		return res.json()
 
+@app.route(PREFIX + 'delete/', methods=['POST', 'GET'])
+def delete_fn():
+	if request.content_type == 'application/json':
+		if 'key' in request.args:
+			key = request.args['key']
+			key_hash = hash_fn(key)
 
+		else:
+			return jsonify({'status' : 400, 'resp' : 'bad request - no key argument'})
 
-
-
+		if ((key_hash <= node.nodehash() and key_hash > hash_fn(node.previous_node) and node.nodehash() > hash_fn(node.previous_node)) or\
+		(node.nodehash() < hash_fn(node.previous_node) and (key_hash > hash_fn(node.previous_node) or key_hash < node.nodehash()))):
+			if key_hash in node.responsibility.keys():
+				del node.responsibility[key_hash]
+				return jsonify( {'status' : 200 , 'resp' : 'key removed'})
+			else:
+				return jsonify( {'status' : 200 , 'resp' : 'key not in dht'})
+		else:
+			headers = {'content_type' : 'application/json'}
+			params = {'key'  : key}
+			url = f'http://{node.next_node["ip"]}:{node.next_node["port"]}{PREFIX}delete/'
+			res =  requests.post(url , params=params, headers=headers)
+			return res.json()
+	else:
+		return jsonify({'status' : 400, 'resp' : 'bad request  - check content type'})
 
 
 '''
@@ -326,10 +325,6 @@ def query_fn():
 DEPART of nodes in dht. 
 
 '''
-
-
-
-
 @app.route(PREFIX + 'depart/', methods = ['GET' , 'POST'])
 def depart_node():	
 	dic = node.responsibility
@@ -387,24 +382,21 @@ def overlay_fn():
 	return res.json()
 
 
-
-
-
-
 '''
 
 main routine running when .py file runs
 
 '''
 
-
+def run_util(ip,port):
+	app.run(port=port, host = ip, debug= True)
 
 if __name__ == '__main__':
 	parser = argparse.ArgumentParser()
 	parser.add_argument('--ip', default = 'localhost' , help = 'ip of the device running the app')
 	parser.add_argument('--port', default = '5100',help = 'port on which the app runs')
 	parser.add_argument('--bootstrap' ,default = False, action = 'store_true', help = 'used to launch first node')
-
+	
 	args = parser.parse_args()	
 	bootstrap = args.bootstrap
 	if args.ip is not None and args.bootstrap is False:
@@ -424,8 +416,8 @@ if __name__ == '__main__':
 
 	node = Node(ip, port)
 	print(node.nodehash())
-	#if bootstrap is False:
-	#	_thread.start_new_thread(join_util, (ip,port,))
-
-	app.run(port=port, host = ip, debug= True)
+	flag = True
 	
+	if flag is True:
+		app.run(host=ip, port=port, debug=False)
+

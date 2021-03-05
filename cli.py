@@ -5,6 +5,9 @@ import argparse
 import urllib3
 import json 
 from termcolor import cprint
+from pyfiglet import Figlet
+
+
 PREFIX = '/home/'
 
 def get_greet(ip, port):
@@ -39,6 +42,15 @@ def depart_node(ip, port):
 	res  = requests.post(url)
 	return res.json()
 
+
+def delete_key(ip, port, key):
+	url = f'http://{ip}:{port}{PREFIX}delete/'
+	headers = {'content_type' : 'application/json'}
+	params = {'key' : key}
+	res  = requests.post(url, headers=headers, params = params)
+	return res.json()
+
+
 def overlay_fn(ip,port):
 	url = f'http://{ip}:{port}{PREFIX}overlay/'
 	res  = requests.post(url).json()
@@ -49,6 +61,9 @@ def overlay_fn(ip,port):
 
 
 if __name__ == '__main__':
+
+	f = Figlet(font='standard')
+	print(f.renderText('Toy Chord CLI!'))
 	'''
 	first, we need a parser for command line arguments
 	'''
@@ -90,5 +105,9 @@ if __name__ == '__main__':
 		over = overlay_fn(ip,port).replace('[','').replace(']','').split(',')
 		for x in over:
 			print(x)
+		exit(0)
+	elif command == 'delete':
+		key = args.key
+		print(delete_key(ip,port, key))
 		exit(0)
  
