@@ -7,8 +7,10 @@ import json
 from termcolor import cprint
 from pyfiglet import Figlet
 
-
+BOOTSTRAP_IP = 'localhost'
+BOOTSTRAP_PORT = '5000'
 PREFIX = '/home/'
+
 
 def get_greet(ip, port):
 	PREFIX = '/home/'
@@ -17,20 +19,20 @@ def get_greet(ip, port):
 	return res
 
 def check_join(ip, port):
-	BASE_URL = 'http://' + 'localhost' + ':' + '5000' + PREFIX + 'join/'
+	BASE_URL = 'http://' + BOOTSTRAP_IP + ':' + BOOTSTRAP_PORT + PREFIX + 'join/'
 	bogus = {'ip' : ip , 'port' : port}
 	res = requests.post(BASE_URL, params = bogus ,headers = {'content_type' : 'application/json'}).json()
 	return res
 
 def insert_key_value(ip, port, key, value):
-	url = f'http://{ip}:{port}/{PREFIX}insert/'
+	url = 'http://{}:{}{}insert/'.format(ip,port,PREFIX)
 	params = {'key': key, 'value' : value}
 	headers = {'content_type' : 'application/json'}
 	res = requests.post(url, headers=headers, params=params).json()
 	return res
 
 def query_function(ip, port, key):
-	url = f'http://{ip}:{port}{PREFIX}query/'
+	url = 'http://{}:{}{}query/'.format(ip,port,PREFIX)
 	params = {'key' : key}
 	headers = {'content_type' : 'application/json'}
 	res = requests.get(url, params=params, headers= headers).json()
@@ -38,13 +40,13 @@ def query_function(ip, port, key):
 
 
 def depart_node(ip, port):
-	url = f'http://{ip}:{port}{PREFIX}depart/'
+	url = 'http://{}:{}{}depart/'.format(ip, port,PREFIX)
 	res  = requests.post(url)
 	return res.json()
 
 
 def delete_key(ip, port, key):
-	url = f'http://{ip}:{port}{PREFIX}delete/'
+	url = 'http://{}:{}{}delete/'.format(ip,port,PREFIX)
 	headers = {'content_type' : 'application/json'}
 	params = {'key' : key}
 	res  = requests.post(url, headers=headers, params = params)
@@ -52,7 +54,7 @@ def delete_key(ip, port, key):
 
 
 def overlay_fn(ip,port):
-	url = f'http://{ip}:{port}{PREFIX}overlay/'
+	url = 'http://{}:{}{}overlay/'.format(ip, port,PREFIX)
 	res  = requests.post(url).json()
 	if 'nodes' in res.keys():
 		nodes = res['nodes']
@@ -63,13 +65,13 @@ def overlay_fn(ip,port):
 if __name__ == '__main__':
 
 	f = Figlet(font='standard')
-	print(f.renderText('Toy Chord CLI!'))
+	#print(f.renderText('Toy Chord CLI!'))
 	'''
 	first, we need a parser for command line arguments
 	'''
 	parser = argparse.ArgumentParser()
 	parser.add_argument('--ip', default = 'localhost' , help = 'ip of the device running the app')
-	parser.add_argument('--port', default = '5000' ,help = 'port on which the app runs')
+	parser.add_argument('--port', default = '5100' ,help = 'port on which the app runs')
 	parser.add_argument('--command', help = 'select action action to perform')
 	parser.add_argument('--key', help = 'type key argument for insert/delete/query')
 	parser.add_argument('--value', help = 'type value argument for insert ONLY')
