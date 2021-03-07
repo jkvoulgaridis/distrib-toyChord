@@ -6,6 +6,7 @@ import urllib3
 import json 
 from termcolor import cprint
 from pyfiglet import Figlet
+import time
 
 BOOTSTRAP_IP = 'localhost'
 BOOTSTRAP_PORT = '5000'
@@ -75,6 +76,7 @@ if __name__ == '__main__':
 	parser.add_argument('--command', help = 'select action action to perform')
 	parser.add_argument('--key', help = 'type key argument for insert/delete/query')
 	parser.add_argument('--value', help = 'type value argument for insert ONLY')
+	parser.add_argument('--filename', default=None, help = 'insert | delete from a given file')
 	args = parser.parse_args()
 
 	'''
@@ -92,11 +94,35 @@ if __name__ == '__main__':
 		print(check_join(ip, port))
 		exit(0)
 	elif command == 'insert':
-		key = args.key
-		value = args.value
-		print(insert_key_value(ip,port,key,value))
-		exit(0)
+		if args.filename is not None:
+			with open(args.filename, 'r') as f:
+				for line in f:
+					line = line.split(',')
+					if len(line) == 2:
+						key = line[0].strip()
+						value = line[1]
+						res = insert_key_value(ip,port,key,value)
+						print(res)
+			exit(0)
+		else:
+			key = args.key
+			value = args.value
+			print(insert_key_value(ip,port,key,value))
+			exit(0)
+
+
 	elif command == 'query':
+		if args.filename is not None:
+			with open(args.filename , 'r') as f:
+				for line in f:
+					line = line.split(',')
+					if len(line) == 2:
+						key = line[0]
+						value = line[1]
+						res = query_function(ip,port,key)
+						print(res)
+			exit(0)
+
 		key = args.key
 		print(query_function(ip, port, key))
 		exit(0)
@@ -111,5 +137,25 @@ if __name__ == '__main__':
 	elif command == 'delete':
 		key = args.key
 		print(delete_key(ip,port, key))
+		exit(0)
+
+	elif command == 'experiment':
+		with open(args.filename, 'r') as f:
+			start = time.time()
+			for line in f:
+				line = line.split(',')
+				if line[0] == 'insert':
+					res = insert_key_value(ip, port, line[1].strip(), line[2])
+					#print(res)
+				elif line[0] == 'query':
+					res = query_function(ip, port, line[1].strip())
+					#print(res)
+				else:
+					print('error, exiting...')
+					exit(1)
+		end = time.time()
+		dur = end-start
+		print('Elapsed time: {} min : {:.2f} secs'.format(dur // 60, dur%60))
+		print('DONE, exiting experiment...')
 		exit(0)
  

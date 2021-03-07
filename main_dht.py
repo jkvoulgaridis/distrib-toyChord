@@ -15,8 +15,6 @@ BOOTSTRAP_IP = 'localhost'
 BOOTSTRAP_PORT = '5000'
 PREFIX = '/home/'
 
-
-
 class Node:
 	def __init__(self, ip, port):
 		self.ip = ip
@@ -69,10 +67,9 @@ app = Flask(__name__)
 
 global node
 
+
 '''
-
 / ENDPOINT redirects redirects to /home/ 
-
 '''
 
 @app.route('/')
@@ -85,7 +82,7 @@ def home():
 GET BASIC info from current node 
 '''
 
-@app.route( PREFIX  , methods = ['GET'])
+@app.route(PREFIX  , methods = ['GET'])
 def home_greet():
 	print(type(node.format_next()))
 	print(node.format_prev())
@@ -141,12 +138,13 @@ def join_node():
 		node.next_node = {'ip' : ip , 'port' : port}
 		return jsonify({'status' : 200, 'resp' : 'updated both'})
 
-
 	elif cmd == 'update-previous':
+
 		'''
 		when a new node should be placed between two adjecents nodes, 
 		the first nodes informs the later about his new neighbor (new node)
 		'''		
+		
 		print('In update previous command')
 		node.previous_node = {'ip' : ip , 'port' : port}
 		new_dict= dict()
@@ -184,8 +182,8 @@ def join_node():
 		node.next_node = None
 		return jsonify({'status' : 200 , 'resp' : 'join/update done'})
 
-	elif (nhs > node.nodehash() and nhs < hash_fn(node.next_node) and node.nodehash() < hash_fn(node.next_node)) or \
-	   (node.nodehash() > hash_fn(node.next_node)):
+	elif (nhs > node.nodehash() and nhs < hash_fn(node.next_node) and node.nodehash() < hash_fn(node.next_node)) \
+		 or ((node.nodehash() > hash_fn(node.next_node)) and  (nhs > node.nodehash()  or nhs < hash_fn(node.next_node))):
 
 		'''
 		the following if-else statement determines if a node should be placed
@@ -194,23 +192,23 @@ def join_node():
 
 		params = {'status' : 200, 'command' : 'update-previous', 'ip' : ip, 'port' : port}
 		headers = {'content_type'  :  'application/json'}
-		url ='http://{}:{}{}join/'.format(node.next_node["ip"],\
-			node.next_node["port"], PREFIX)
+		url ='http://{}:{}{}join/'.format(node.next_node["ip"],node.next_node["port"], PREFIX)
 		print('IN FORWARD IF')
 		print(url)
 		res = requests.post(url,headers=headers, params= params)
 		print(res.json())
+
 		#step 2 : inform new node about his new neighbors
 		params2 = {'status':200, 'command':'update-both', 'prev_ip': node.ip, 'prev_port' : node.port, \
 		'nxt_ip' : node.next_node['ip'] , 'nxt_port' : node.next_node['port']}
 		headers = {'content_type'  :  'application/json'}
 		url_2 = 'http://{}:{}{}join/'.format(ip, port, PREFIX)
-		res2 = requests.post(url_2,\
-			headers=headers, params= params2)
+		res2 = requests.post(url_2, headers=headers, params= params2)
 		print('in 2 strp command')	
+
+		#step 3 
 		node.next_node = {'ip' : ip, 'port' : port}
 		return jsonify({'status':200, 'resp': 'in a cmd with 2 steps'})
-
 	else:
 
 		print('forward to next node')
@@ -220,168 +218,19 @@ def join_node():
 		res = requests.post(url,headers=headers, params = params)
 		return jsonify({'status':200, 'resp': 'forward'})
 
-
-
-'''
-INSERT METHOD ADDS NEW DATA TO DHT
-'''
-
-@app.route(PREFIX + 'insert/', methods = ['GET', 'POST'])
-def insert_file():
-	if request.content_type == 'application/json':
-		if 'key' in request.args and 'value' in request.args:
-			key = request.args['key']
-			value = request.args['value']
-			key_hash = hash_fn(key)
-
-			if 'rf' in request.args:
-				rf = int(request.args['rf'])
-				if key_hash not in node.responsibility.keys():
-					node.replicas[key_hash] = value
-					rf -= 1
-					if rf > 0:
-						url='http://{}:{}{}insert/'.format(node.next_node['ip'],node.next_node['port'],PREFIX)
-						headers={'content_type' : 'application/json'}
-						params = {'rf' : rf, 'key' : key, 'value' : value}
-						res= requests.post(url, headers=headers, params=params)
-						return jsonify({'status' : 200 , 'resp' : 'replica added'})
-					else:
-						return jsonify({'status': 200, 'resp' : 'inserted values and replicas'})
-
-			if ((key_hash <= node.nodehash() and key_hash > hash_fn(node.previous_node) and node.nodehash() > hash_fn(node.previous_node)) or\
-				(node.nodehash() < hash_fn(node.previous_node) and (key_hash > hash_fn(node.previous_node) or key_hash < node.nodehash()))):
-				#add key to respinsibility dictionary
-				node.add_responsibility(key_hash, value)
-				#inform next nodes about replication
-				url='http://{}:{}{}insert/'.format(node.next_node['ip'],node.next_node['port'],PREFIX)
-				headers={'content_type' : 'application/json'}
-				params = {'rf' : node.replication_factor, 'key' : key, 'value' : value}
-				res= requests.post(url, headers=headers, params=params)
-
-				return jsonify({'status' : 200, 'resp' : 'added <key,value> pair'})
-			else:
-				headers = {'content_type' : 'application/json'}
-				params = {'key' : key, 'value' : value}
-				url ='http://{}:{}{}insert/'.format(node.next_node["ip"],node.next_node["port"],PREFIX)
-				res = requests.post(url, headers=headers, params=params)
-				return jsonify({'status' : 200, 'resp' : 'forwarded <key,value> pair'})
-		elif 'dict' in request.args:
-			dict_ = json.loads(request.args['dict'])
-			print(dict_)
-			node.responsibility.update(dict_)
-			return jsonify({'status' : 200, 'resp' : 'dictionary insertion OK'})
-		else:
-			return jsonify({'status' : 400, 'resp' : 'bad request (check content_type header)'})
-
-
-'''
-
-QUERY endpoint searches keys in dht
-
-'''
-
-@app.route(PREFIX + 'query/', methods = ['GET', 'POST'])
-def query_fn():
-	if request.content_type == 'application/json':
-		key = request.args['key']
-	else:
-		return jsonify({'status' : 400, 'resp' : 'bad format'})
-	key_hash = hash_fn(key)
-	if bootstrap is True:
-		print('IN BOOTSTRAP QUERY')
-		if 'status' in request.args:
-			if request.args['status'] == '200':
-				return jsonify({'value' : request.args['value']})
-			else:
-				return jsonify({'value' : 'key not in dht'})
-
-	if ((key_hash <= node.nodehash() and key_hash > hash_fn(node.previous_node) and node.nodehash() > hash_fn(node.previous_node)) or\
-		(node.nodehash() < hash_fn(node.previous_node) and (key_hash > hash_fn(node.previous_node) or key_hash < node.nodehash()))):
-		if key_hash in node.responsibility.keys():
-			value = node.responsibility[key_hash]
-			params = {'status' : 200 , 'key' :key, 'value' : value}
-			headers = {'content_type' : 'application/json'}
-			url = 'http://{}:{}{}query/'.format(BOOTSTRAP_IP,BOOTSTRAP_PORT,PREFIX)
-			res = requests.post(url, params=params, headers= headers)
-			print('FOUND KEY')
-			return res.json()
-		else:
-			url ='http://{}:{}{}query/'.format(BOOTSTRAP_IP, BOOTSTRAP_PORT, PREFIX)
-			params = {'status' : 404, 'key' : key}
-			headers = {'content_type' : 'application/json'}
-			print('KEY NOT IN DHT')
-			res = requests.post(url, params=params, headers= headers)		
-			return res.json()
-	else:
-		print('FORWARDED QUERY')
-		params = {'key' : key}
-		headers = {'content_type' : 'application/json'}
-		url = 'http://{}:{}{}query/'.format(node.next_node["ip"],node.next_node["port"],PREFIX)
-		res = requests.post(url, params=params, headers= headers)
-		return res.json()
-
-@app.route(PREFIX + 'delete/', methods=['POST', 'GET'])
-def delete_fn():
-	if request.content_type == 'application/json':
-		if 'key' in request.args:
-			key = request.args['key']
-			key_hash = hash_fn(key)
-
-		else:
-			return jsonify({'status' : 400, 'resp' : 'bad request - no key argument'})
-
-		if 'rf' in request.args:
-			rf = int(request.args['rf'])
-			if key_hash in node.replicas:
-				del node.replicas[key_hash]
-			if key_hash in node.responsibility:
-				del node.responsibility[key_hash]
-			rf -= 1
-			if rf > 1:
-				headers = {'content_type' : 'application/json'}
-				params = {'key'  : key, 'rf' : node.replication_factor}
-				url = 'http://{}:{}{}delete/'.format(node.next_node["ip"],node.next_node["port"],PREFIX)
-				res = requests.post(url,headers=headers, params=params)
-			else:
-				return jsonify({'status': 200, 'resp' : 'key and all replicas removed'})
-
-			return jsonify({'status' : 200, 'resp' : 'removed a replica'})
-
-		if ((key_hash <= node.nodehash() and key_hash > hash_fn(node.previous_node) and node.nodehash() > hash_fn(node.previous_node)) or\
-		(node.nodehash() < hash_fn(node.previous_node) and (key_hash > hash_fn(node.previous_node) or key_hash < node.nodehash()))):
-			if key_hash in node.responsibility.keys():
-				del node.responsibility[key_hash]
-				if node.replication_factor > 1:
-					headers = {'content_type' : 'application/json'}
-					params = {'key'  : key, 'rf' : node.replication_factor}
-					url = 'http://{}:{}{}delete/'.format(node.next_node["ip"],node.next_node["port"],PREFIX)	
-					res = requests.post(url, headers=headers, params=params)
-
-				return jsonify({'status' : 200 , 'resp' : 'key removed'})
-			else:
-				return jsonify( {'status' : 200 , 'resp' : 'key not in dht'})
-		else:
-			headers = {'content_type' : 'application/json'}
-			params = {'key'  : key}
-			url = 'http://{}:{}{}delete/'.format(node.next_node["ip"],node.next_node["port"],PREFIX)
-			res =  requests.post(url , params=params, headers=headers)
-			return res.json()
-	else:
-		return jsonify({'status' : 400, 'resp' : 'bad request  - check content type'})
-
-
 '''
 
 DEPART of nodes in dht. 
 
 '''
+
 @app.route(PREFIX + 'depart/', methods = ['GET' , 'POST'])
 def depart_node():	
 	dic = node.responsibility
 	url_ = 'http://{}:{}{}insert/'.format(node.next_node["ip"],node.next_node["port"],PREFIX)
 	headers = {'content_type' : 'application/json'}
-	for k,v in enumerate(dic):
-		params = {'key' : k, 'value' : v}
+	for k in dic.keys():
+		params = {'key' : k, 'value' : dic[k]}
 		requests.post(url_, headers=headers, params= params)
 
 	if node.next_node['ip'] == node.previous_node['ip'] and node.next_node['port'] == node.previous_node['port']:
@@ -409,6 +258,171 @@ def depart_node():
 
 
 
+'''
+INSERT METHOD ADDS NEW DATA TO DHT
+'''
+
+@app.route(PREFIX + 'insert/', methods = ['GET', 'POST'])
+def insert_file():
+	if request.content_type == 'application/json':
+
+		if 'key' in request.args and 'value' in request.args:
+			key = request.args['key']
+			value = request.args['value']
+			key_hash = hash_fn(key)
+
+			if 'rf' in request.args:
+				rf = int(request.args['rf'])
+				if key_hash not in node.responsibility.keys():
+					node.replicas[key_hash] = value
+					rf -= 1
+					if rf > 0:
+						print('inserting replica')
+						url='http://{}:{}{}insert/'.format(node.next_node['ip'],node.next_node['port'],PREFIX)
+						headers={'content_type' : 'application/json'}
+						params = {'rf' : rf, 'key' : key, 'value' : value}
+						res= requests.post(url, headers=headers, params=params)
+						return jsonify({'status' : 200 , 'resp' : 'replica added'})
+					else:
+						print('added last replica')
+						return jsonify({'status': 200, 'resp' : 'inserted values and replicas'})
+
+			if ((key_hash <= node.nodehash() and key_hash > hash_fn(node.previous_node) and node.nodehash() > hash_fn(node.previous_node)) or\
+				(node.nodehash() < hash_fn(node.previous_node) and (key_hash > hash_fn(node.previous_node) or key_hash < node.nodehash()))):
+				#add key to respinsibility dictionary
+				node.add_responsibility(key_hash, value)
+				#inform next nodes about replication
+				url='http://{}:{}{}insert/'.format(node.next_node['ip'],node.next_node['port'],PREFIX)
+				headers={'content_type' : 'application/json'}
+				params = {'rf' : node.replication_factor, 'key' : key, 'value' : value}
+				res= requests.post(url, headers=headers, params=params)
+				return jsonify({'status' : 200, 'resp' : 'added <key,value> pair'})
+			else:
+
+				headers = {'content_type' : 'application/json'}
+				params = {'key' : key, 'value' : value}
+				url ='http://{}:{}{}insert/'.format(node.next_node["ip"],node.next_node["port"],PREFIX)
+				res = requests.post(url, headers=headers, params=params)
+				return jsonify({'status' : 200, 'resp' : 'forwarded <key,value> pair'})
+
+		elif 'dict' in request.args:
+			dict_ = json.loads(request.args['dict'])
+			print(dict_)
+			node.responsibility.update(dict_)
+			return jsonify({'status' : 200, 'resp' : 'dictionary insertion OK'})
+		else:
+			return jsonify({'status' : 400, 'resp' : 'bad request (check content_type header)'})
+
+
+@app.route(PREFIX + 'delete/', methods=['POST', 'GET'])
+def delete_fn():
+	if request.content_type == 'application/json':
+		if 'key' in request.args:
+			key = request.args['key']
+			key_hash = hash_fn(key)
+
+		else:
+			return jsonify({'status' : 400, 'resp' : 'bad request - no key argument'})
+
+		if 'rf' in request.args:
+			rf = int(request.args['rf'])
+			if key_hash in node.replicas:
+				del node.replicas[key_hash]
+			if key_hash in node.responsibility:
+				del node.responsibility[key_hash]
+			rf -= 1
+			if rf > 0:
+				headers = {'content_type' : 'application/json'}
+				params = {'key'  : key, 'rf' : node.replication_factor}
+				url = 'http://{}:{}{}delete/'.format(node.next_node["ip"],node.next_node["port"],PREFIX)
+				res = requests.post(url,headers=headers, params=params)
+			else:
+				return jsonify({'status': 200, 'resp' : 'key and all replicas removed'})
+
+			return jsonify({'status' : 200, 'resp' : 'removed a replica'})
+
+		if ((key_hash <= node.nodehash() and key_hash > hash_fn(node.previous_node) and node.nodehash() > hash_fn(node.previous_node)) or\
+		(node.nodehash() < hash_fn(node.previous_node) and (key_hash > hash_fn(node.previous_node) or key_hash < node.nodehash()))):
+			if key_hash in node.responsibility.keys():
+				del node.responsibility[key_hash]
+				if node.replication_factor > 0:
+					headers = {'content_type' : 'application/json'}
+					params = {'key'  : key, 'rf' : node.replication_factor}
+					url = 'http://{}:{}{}delete/'.format(node.next_node["ip"],node.next_node["port"],PREFIX)	
+					res = requests.post(url, headers=headers, params=params)
+
+				return jsonify({'status' : 200 , 'resp' : 'key removed'})
+			else:
+				return jsonify( {'status' : 200 , 'resp' : 'key not in dht'})
+		else:
+			headers = {'content_type' : 'application/json'}
+			params = {'key'  : key}
+			url = 'http://{}:{}{}delete/'.format(node.next_node["ip"],node.next_node["port"],PREFIX)
+			res =  requests.post(url , params=params, headers=headers)
+			return res.json()
+	else:
+		return jsonify({'status' : 400, 'resp' : 'bad request  - check content type'})
+
+
+'''
+
+QUERY endpoint searches keys in dht
+
+'''
+
+@app.route(PREFIX + 'query/', methods = ['GET', 'POST'])
+def query_fn():
+	if request.content_type == 'application/json':
+		key = request.args['key']
+	else:
+		return jsonify({'status' : 400, 'resp' : 'bad format'})
+	key_hash = hash_fn(key)
+
+	if node.policy == 'EL':
+		if key_hash in node.replicas.keys():
+			value = node.replicas[key_hash]
+			return jsonify({'status' : 200, 'resp' : 'found key', 'key' : key, 'value' : value})
+
+
+	if 'rf' in request.args:
+		rf = int(request.args)
+		if rf == 1:
+			if key_hash in node.replicas.keys():
+				value = node.replicas[key_hash]
+				return jsonify({'status' : 200, 'resp' : 'found key', 'key' : key, 'value' : value})
+		else:
+			rf -= 1
+			headers = {'content_type' : 'application/json'}
+			params = {'key'  : key, 'rf' : rf}
+			url = 'http://{}:{}{}query/'.format(node.next_node["ip"],node.next_node["port"],PREFIX)	
+			res = requests.post(url, headers=headers, params=params)
+			return re.json()
+
+
+	if ((key_hash <= node.nodehash() and key_hash > hash_fn(node.previous_node) and node.nodehash() > hash_fn(node.previous_node)) or\
+		(node.nodehash() < hash_fn(node.previous_node) and (key_hash > hash_fn(node.previous_node) or key_hash < node.nodehash()))):
+		if key_hash in node.responsibility.keys():
+			if node.policy == 'EC':		# when we want eventual consistency we get the first copy found
+				value = node.responsibility[key_hash]
+				return jsonify({'status' : 200, 'resp' : 'found key', 'key' : key, 'value': value})
+			else:
+				#In this case we will return the last replica
+				headers = {'content_type' : 'application/json'}
+				params = {'key'  : key, 'rf' : node.replication_factor}
+				url = 'http://{}:{}{}query/'.format(node.next_node["ip"],node.next_node["port"],PREFIX)	
+				res = requests.post(url, headers=headers, params=params)
+				return re.json()
+		else:
+			return jsonify({'status' : 404, 'resp' : 'key not in DHT'})
+	else:
+		print('FORWARDED QUERY')
+		params = {'key' : key}
+		headers = {'content_type' : 'application/json'}
+		url = 'http://{}:{}{}query/'.format(node.next_node["ip"],node.next_node["port"],PREFIX)
+		res = requests.post(url, params=params, headers= headers)
+		return res.json()
+
+
 @app.route(PREFIX + 'overlay/' , methods=['GET', 'POST'])
 def overlay_fn():
 	if 'nodes' not in request.args:
@@ -417,7 +431,7 @@ def overlay_fn():
 	else:
 		nodes = json.loads(request.args['nodes'])
 		if '{}:{}'.format(node.ip,node.port) in nodes:
-			return jsonify({'status':200, 'nodes' : json.dumps(nodes)}) 
+			return jsonify({'status': 200, 'nodes' : json.dumps(nodes)}) 
 		else:
 			print('NODES : {}'.format(nodes))
 			print(type(nodes))
@@ -432,7 +446,6 @@ def overlay_fn():
 
 
 '''
-
 main routine running when .py file runs
 
 '''
@@ -445,10 +458,9 @@ if __name__ == '__main__':
 	parser.add_argument('--ip', default = 'localhost' , help = 'ip of the device running the app')
 	parser.add_argument('--port', default = '5100',help = 'port on which the app runs')
 	parser.add_argument('--bootstrap' ,default = False, action = 'store_true', help = 'used to launch first node')
-	parser.add_argument('--policy', default=None ,help = 'policy = [linearizability (L) | eventual_consistency] (EL)')
+	parser.add_argument('--policy', default='EC' ,help = 'policy = [linearizability (L) | eventual_consistency] (EC)')
 	parser.add_argument('--replication', default=1, help = 'pick replication factor')
 	args = parser.parse_args()
-
 
 	bootstrap = args.bootstrap
 	if args.ip is not None and args.bootstrap is False:
@@ -466,13 +478,25 @@ if __name__ == '__main__':
 		print('node ip : {}'.format(ip))
 		print('binded port : {}'.format(port))
 
-	if args.policy is not None:
-		node.policy = args.policy
-
+	
 	
 	node = Node(ip, port)
-	node.replication_factor = args.replication
+	node.replication_factor = int(args.replication)
+	node.policy = args.policy
 
 	print(node.nodehash())
-	app.run(host=ip, port=port, debug=False)
 
+	if bootstrap is True:
+		app.run(host=ip, port=port, debug=False)
+	
+	n = os.fork()
+	if n == 0:
+		time.sleep(2)
+		res= check_join(ip, port)
+		print(res)
+		exit(0)
+	elif n > 0:
+		app.run(host=ip, port=port, debug=False)		
+	else:
+		print('Error in booting node :(')	
+	
