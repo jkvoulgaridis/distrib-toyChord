@@ -9,11 +9,30 @@ from threading import Thread
 import time
 from itertools import islice
 import os
+import aiohttp, asyncio
 
-RING_SIZE_EXP = 10   # for a given value -> 2**SIZE nodes at ring (max)
-BOOTSTRAP_IP = 'localhost'
-BOOTSTRAP_PORT = '5000'
+TEST = True
+
+if TEST is False:
+	BOOTSTRAP_IP = '192.168.0.1'
+	BOOTSTRAP_PORT = '5000'	
+	RING_SIZE_EXP = 100   # for a given value -> 2**SIZE nodes at ring (max)
+else:
+	BOOTSTRAP_IP = 'localhost'
+	BOOTSTRAP_PORT = '5000'
+	RING_SIZE_EXP = 10   # for a given value -> 2**SIZE nodes at ring (max)
+
 PREFIX = '/home/'
+
+
+def in_thread_post(url,params,headers):
+	print('in thread post!')
+	requests.post(url, headers=headers, params=params)
+
+'''
+th = Thread(target=in_thread_post, args=(1,))
+th.start()
+'''
 
 class Node:
 	def __init__(self, ip, port):
@@ -42,16 +61,9 @@ class Node:
 def check_join(ip, port):
 	BASE_URL = 'http://{}:{}{}join/'.format(BOOTSTRAP_IP,BOOTSTRAP_PORT,PREFIX)
 	bogus = {'ip' : ip , 'port' : port}
-	res = requests.post(BASE_URL, params = bogus ,headers = {'content_type' : 'application/json'}).json()
+	headers = {'content_type' : 'application/json'}
+	res = requests.post(BASE_URL, params = bogus ,headers = headers).json()
 	return res
-
-global flag
-def join_util(ip, port):
-	print('in THREAD')
-	time.sleep(5)
-	check_join(ip, port)
-	flag = False
-	exit(0)
 
 def hash_fn(nd):
 	if nd is None:
@@ -88,7 +100,8 @@ def home_greet():
 	print(node.format_prev())
 	return jsonify({'current' : '{}:{}'.format(node.ip, node.port),\
 		'nodehash' : node.nodehash() , 'prev' : node.format_prev(), 'next' : node.format_next(), \
-		'resps': node.responsibility, 'replicas': node.replicas, 'replication' : node.replication_factor})
+		'resps': node.responsibility, 'replicas': node.replicas, 'replication' : node.replication_factor, \
+		'policy' : node.policy})
 
 '''
 ADD new nodes to DHT
@@ -124,8 +137,7 @@ def join_node():
 		params = {'status' : 200 , 'command' : 'from-bootstrap-register-both',\
 			'ip': node.ip, 'port' : node.port} 
 		url = "http://{}:{}{}join/".format(ip,port,PREFIX)
-		res = requests.post(url,\
-			params = params, headers = {'content_type' : 'application/json'})
+		res = requests.post(url,params = params, headers = {'content_type' : 'application/json'})
 		print(res.json())
 		return jsonify({'status': 200, 'resp' : 'added first node (bootstrap out)'})
 
@@ -216,7 +228,8 @@ def join_node():
 		headers = {'content_type': 'application/json'}
 		url ='http://{}:{}{}join/'.format(node.next_node['ip'],node.next_node['port'], PREFIX)
 		res = requests.post(url,headers=headers, params = params)
-		return jsonify({'status':200, 'resp': 'forward'})
+		#return jsonify({'status':200, 'resp': 'forward'})
+		return res.json()
 
 '''
 
@@ -265,7 +278,6 @@ INSERT METHOD ADDS NEW DATA TO DHT
 @app.route(PREFIX + 'insert/', methods = ['GET', 'POST'])
 def insert_file():
 	if request.content_type == 'application/json':
-
 		if 'key' in request.args and 'value' in request.args:
 			key = request.args['key']
 			value = request.args['value']
@@ -274,18 +286,31 @@ def insert_file():
 			if 'rf' in request.args:
 				rf = int(request.args['rf'])
 				if key_hash not in node.responsibility.keys():
+					#Store replica!
 					node.replicas[key_hash] = value
 					rf -= 1
 					if rf > 0:
+						
 						print('inserting replica')
 						url='http://{}:{}{}insert/'.format(node.next_node['ip'],node.next_node['port'],PREFIX)
 						headers={'content_type' : 'application/json'}
 						params = {'rf' : rf, 'key' : key, 'value' : value}
-						res= requests.post(url, headers=headers, params=params)
+						'''
+						res = requests.post(url, headers=headers, params=params)
+						'''
+						if node.policy == 'EC':
+							x = Thread(target= in_thread_post,  args=(url, params, headers))
+							x.start()
+							x.join()
+							print('thread out')
+						else:
+							res= requests.post(url, headers=headers, params=params)
+
 						return jsonify({'status' : 200 , 'resp' : 'replica added'})
 					else:
 						print('added last replica')
 						return jsonify({'status': 200, 'resp' : 'inserted values and replicas'})
+
 
 			if ((key_hash <= node.nodehash() and key_hash > hash_fn(node.previous_node) and node.nodehash() > hash_fn(node.previous_node)) or\
 				(node.nodehash() < hash_fn(node.previous_node) and (key_hash > hash_fn(node.previous_node) or key_hash < node.nodehash()))):
@@ -294,16 +319,39 @@ def insert_file():
 				#inform next nodes about replication
 				url='http://{}:{}{}insert/'.format(node.next_node['ip'],node.next_node['port'],PREFIX)
 				headers={'content_type' : 'application/json'}
-				params = {'rf' : node.replication_factor, 'key' : key, 'value' : value}
-				res= requests.post(url, headers=headers, params=params)
+				params = {'rf' : node.replication_factor - 1, 'key' : key, 'value' : value}
+				
+
+				if node.policy == 'EC':
+					x = Thread(target= in_thread_post,  args=(url, params, headers))
+					x.start()
+
+					x.join()
+
+				else:
+					res= requests.post(url, headers=headers, params=params)
+
+
+				print('in main IF!')
 				return jsonify({'status' : 200, 'resp' : 'added <key,value> pair'})
 			else:
 
 				headers = {'content_type' : 'application/json'}
 				params = {'key' : key, 'value' : value}
 				url ='http://{}:{}{}insert/'.format(node.next_node["ip"],node.next_node["port"],PREFIX)
-				res = requests.post(url, headers=headers, params=params)
+				print('forwarded key')
+			
+				if node.policy == 'EC':
+					x = Thread(target= in_thread_post,  args=(url, params, headers))
+					x.start()
+					x.join()
+					print('done with thread')
+				else:
+					res= requests.post(url, headers=headers, params=params)
+
+
 				return jsonify({'status' : 200, 'resp' : 'forwarded <key,value> pair'})
+				#return res.json()
 
 		elif 'dict' in request.args:
 			dict_ = json.loads(request.args['dict'])
@@ -323,6 +371,23 @@ def delete_fn():
 
 		else:
 			return jsonify({'status' : 400, 'resp' : 'bad request - no key argument'})
+
+		if key == '*':
+			if 'hash' not in request.args:
+				params ={'key' : key, 'hash' : node.nodehash()}
+			else:
+				hs = request.args['hash']
+				params = {'key' , key , 'hash' , hs}
+				if hs == node.nodehash():
+					return jsonify({'status': 200, 'resp' : 'all files deleted'})
+
+			node.responsibility.clear()
+			node.replicas.clear()
+			url = 'http://{}:{}{}delete/'.format(node.next_node["ip"],node.next_node["port"],PREFIX)
+			res = requests.post(url, headers=headers, params=params)
+
+			return res.json()
+
 
 		if 'rf' in request.args:
 			rf = int(request.args['rf'])
@@ -347,7 +412,7 @@ def delete_fn():
 				del node.responsibility[key_hash]
 				if node.replication_factor > 0:
 					headers = {'content_type' : 'application/json'}
-					params = {'key'  : key, 'rf' : node.replication_factor}
+					params = {'key'  : key, 'rf' : node.replication_factor - 1}
 					url = 'http://{}:{}{}delete/'.format(node.next_node["ip"],node.next_node["port"],PREFIX)	
 					res = requests.post(url, headers=headers, params=params)
 
@@ -374,18 +439,43 @@ QUERY endpoint searches keys in dht
 def query_fn():
 	if request.content_type == 'application/json':
 		key = request.args['key']
+		print(key)
 	else:
 		return jsonify({'status' : 400, 'resp' : 'bad format'})
 	key_hash = hash_fn(key)
 
-	if node.policy == 'EL':
+	if key == '*':
+		if 'full' in request.args:
+			full = request.args['full']
+			full = json.loads(full)
+			if '{}:{}'.format(node.ip, node.port) in full.keys():
+				return jsonify({'status' : 200, 'value' : json.dumps(full)})
+		else:
+			full = dict()
+
+
+		print(full)
+
+		full['{}:{}'.format(node.ip,node.port)] = list(node.responsibility)
+		print(full)
+		headers = {'content_type' : 'application/json'}
+		params = {'key'  : key, 'full' : json.dumps(full)}
+		url = 'http://{}:{}{}query/'.format(node.next_node["ip"],node.next_node["port"],PREFIX)	
+		res = requests.post(url, headers=headers, params=params)
+		return res.json()
+
+
+
+
+
+	if node.policy == 'EC':
 		if key_hash in node.replicas.keys():
 			value = node.replicas[key_hash]
 			return jsonify({'status' : 200, 'resp' : 'found key', 'key' : key, 'value' : value})
 
-
 	if 'rf' in request.args:
-		rf = int(request.args)
+		rf = int(request.args['rf'])
+		print(rf)
 		if rf == 1:
 			if key_hash in node.replicas.keys():
 				value = node.replicas[key_hash]
@@ -396,7 +486,7 @@ def query_fn():
 			params = {'key'  : key, 'rf' : rf}
 			url = 'http://{}:{}{}query/'.format(node.next_node["ip"],node.next_node["port"],PREFIX)	
 			res = requests.post(url, headers=headers, params=params)
-			return re.json()
+			return res.json()
 
 
 	if ((key_hash <= node.nodehash() and key_hash > hash_fn(node.previous_node) and node.nodehash() > hash_fn(node.previous_node)) or\
@@ -407,12 +497,18 @@ def query_fn():
 				return jsonify({'status' : 200, 'resp' : 'found key', 'key' : key, 'value': value})
 			else:
 				#In this case we will return the last replica
+				if node.replication_factor == 1:
+					value = node.responsibility[key_hash] 
+					return jsonify({'status' : 200, 'resp' : 'found key', 'key' : key, 'value': value})
+
+
 				headers = {'content_type' : 'application/json'}
-				params = {'key'  : key, 'rf' : node.replication_factor}
+				params = {'key'  : key, 'rf' : node.replication_factor -1 }
 				url = 'http://{}:{}{}query/'.format(node.next_node["ip"],node.next_node["port"],PREFIX)	
 				res = requests.post(url, headers=headers, params=params)
-				return re.json()
+				return res.json()
 		else:
+
 			return jsonify({'status' : 404, 'resp' : 'key not in DHT'})
 	else:
 		print('FORWARDED QUERY')
@@ -450,9 +546,6 @@ main routine running when .py file runs
 
 '''
 
-def run_util(ip,port):
-	app.run(port=port, host = ip, debug= True)
-
 if __name__ == '__main__':
 	parser = argparse.ArgumentParser()
 	parser.add_argument('--ip', default = 'localhost' , help = 'ip of the device running the app')
@@ -479,7 +572,6 @@ if __name__ == '__main__':
 		print('binded port : {}'.format(port))
 
 	
-	
 	node = Node(ip, port)
 	node.replication_factor = int(args.replication)
 	node.policy = args.policy
@@ -496,7 +588,6 @@ if __name__ == '__main__':
 		print(res)
 		exit(0)
 	elif n > 0:
-		app.run(host=ip, port=port, debug=False)		
+		app.run(host=ip, port=port, debug=False, threaded=True)		
 	else:
-		print('Error in booting node :(')	
-	
+		print('Error in booting node :(')
