@@ -4,7 +4,7 @@
 
 1) ``` python3 main_dht.py --bootstrap --replication_factor <k> --policy <EC|L> ```
 
-Η παραπάνω εντολή χρησιμοποιείται για την εκκίνηση του bootstrap node. Ο bootstrap ρυθμίζει το replication factor και την πολιτική συνέπειας για όλο το δίκτυο. Τα ορίσματα ```replication_factor``` και ```policy``` είναι προαιρετικά. 
+Η παραπάνω εντολή χρησιμοποιείται για την εκκίνηση του bootstrap node. Ο bootstrap ρυθμίζει το replication factor και την πολιτική συνέπειας για όλο το δίκτυο. Τα ορίσματα ```replication_factor``` και ```policy``` είναι προαιρετικά. Επίσης, η ip και το port του Bootstrap είναι hard coded στο αρχείο main_dht.py
 
 2) ``` python3 main_dth.py --id <ip>:<port> ```
 
@@ -22,3 +22,21 @@
 
 Προς το παρόν, δεν υπάρχει αρχείο requirements.txt οπότε τυχόν dependencies πρέπει να εγκατασταθούν χειροκίνητα.
 
+# distrib-toyChord@EN
+
+This project is part of the udergrad. Cource Distributed Systems @ECE NTUA, Gr. A simplified version of Chord protocol (<https://pdos.csail.mit.edu/papers/ton:chord/paper-ton.pdf>) is implemented. In particular, this implementation does not support finger tables routing, simultaneous join/departs or simultaneous [joins, departs] / [inserts,deletes,queries]. In addition, we also consider that there is 1 node (bootstrap node) that never departs from the DHT. The protocol's implementaion is main_dht.py file and 2 use cases are demostrated below: 
+
+1) ``` python3 main_dht.py --bootstrap --replication_factor <k> --policy <EC|L> ```
+
+This use cases shows how to boot the bootstrap node, whose ip and port are hard coded in main_dht.py. The optional args --policy and --replication_factor are use to set these parameters (consistency policy and replication factor) for the whole dht. We implement two consistency policies (linearisability through Chain Replication and Eventual Consistency).   
+
+2) ``` python3 main_dth.py --id <ip>:<port> ```
+
+This command is used to launch a new node and join to the dht. 
+
+
+## Instalation 
+
+``` git clone <url_to_proj> ``` 
+
+For now, there is no requirements.txt so all package dependancies should be installed manually. 
