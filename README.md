@@ -12,13 +12,13 @@
 
 Επίσης, για την διαχείριση και την αλληλεπίδραση με το πρωτόκολο υπάρχει και ένα CLI στο αρχείο cli.py. Η σύνταξη για το cli είναι η ακόλουθη:
 
-> ``` python3 cli.py --id <ip>:<port> --command <cmd> {args} ```
+ ``` python3 cli.py --id <ip>:<port> --command <cmd> {args} ```
 
 όπου το  --id είναι η διεύθυνση του κόμβου στον οποίο απευθύνεται το αίτημα command. 
 
 ## Εγκατάσταση 
 
->  git clone <url_to_proj> 
+``` git clone <url_to_proj> ``` 
 
 Προς το παρόν, δεν υπάρχει αρχείο requirements.txt οπότε τυχόν dependencies πρέπει να εγκατασταθούν χειροκίνητα.
 
