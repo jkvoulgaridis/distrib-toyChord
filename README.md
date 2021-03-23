@@ -18,7 +18,7 @@
 
 ## Εγκατάσταση 
 
-> ``` git clone <url_to_proj> ````
+>  git clone <url_to_proj> 
 
 Προς το παρόν, δεν υπάρχει αρχείο requirements.txt οπότε τυχόν dependencies πρέπει να εγκατασταθούν χειροκίνητα.
 
