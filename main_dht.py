@@ -466,12 +466,12 @@ def delete_fn():
 			return res.json()
 
 		if 'rf' in request.args:
-			rf = request.args['rf']
+			rf = int(request.args['rf'])
 			if key_hash in node.replicas[rf]:
 				del node.replicas[rf][key_hash]
 			if key_hash in node.responsibility:
 				del node.responsibility[key_hash]
-			rf = int(rf)
+			#rf = int(rf)
 			rf -= 1
 			if rf > 0:
 				headers = {'content_type' : 'application/json'}
