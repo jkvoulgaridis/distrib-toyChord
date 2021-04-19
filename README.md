@@ -24,7 +24,7 @@
 
 # distrib-toyChord@EN
 
-This project is part of the udergrad. Cource Distributed Systems @ECE NTUA, Gr. A simplified version of Chord protocol (<https://pdos.csail.mit.edu/papers/ton:chord/paper-ton.pdf>) is implemented. In particular, this implementation does not support finger tables routing, simultaneous join/departs or simultaneous [joins, departs] / [inserts,deletes,queries]. In addition, we also consider that there is 1 node (bootstrap node) that never departs from the DHT. The protocol's implementaion is main_dht.py file and 2 use cases are demostrated below: 
+This project is part of the undergrad. Course Distributed Systems @ECE NTUA, Gr. A simplified version of Chord protocol (<https://pdos.csail.mit.edu/papers/ton:chord/paper-ton.pdf>) is implemented. In particular, this implementation does not support finger tables routing, simultaneous join/departs or simultaneous [joins, departs] / [inserts,deletes,queries]. In addition, we also consider that there is 1 node (bootstrap node) that never departs from the DHT. The protocol's implementaion is main_dht.py file and 2 use cases are demostrated below: 
 
 1) ``` python3 main_dht.py --bootstrap --replication_factor <k> --policy <EC|L> ```
 
