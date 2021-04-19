@@ -35,7 +35,7 @@ This use cases shows how to boot the bootstrap node, whose ip and port are hard 
 This command is used to launch a new node and join to the dht. 
 
 
-## Instalation 
+## Installation 
 
 ``` git clone <url_to_proj> ``` 
 
